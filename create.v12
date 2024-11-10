@@ -99,7 +99,6 @@ EOF
 
 # If flag is set to create Python virtual environment
 if [ $create_python_env -eq 1 ]; then
-    
 
     # Create requirements.txt
     touch $project_folder/requirements.txt
@@ -156,14 +155,48 @@ cache-dir = $VENV_LIB/pip-cache
 ignore-installed = true
 EOF
 
-    # Set execute permissions for main.py
-    chmod +x "$project_folder/main.py"
+# Set execute permissions for main.py
+chmod +x "$project_folder/main.py"
 
-    # Create a /bin folder
-    mkdir -p "$project_folder/bin"
+# Create a /bin folder
+mkdir -p "$project_folder/bin"
 
-    # Create a run.sh file inside /bin folder
-    cat << EOF > "$project_folder/bin/run_$project_name.sh"
+
+# Create build.sh file
+cat << EOF > "$project_folder/bin/build.sh"
+#!/bin/bash
+
+### Create python virtual environment ###
+BUILD_DIR=\$(realpath "\$(dirname "\$0")/..")
+PY_VER_PATH="${selected_python_version}/bin"
+VENV_PATH="\${BUILD_DIR}/.venv"
+echo "Installing python env to \$VENV_PATH"
+\${PY_VER_PATH}/python -m venv \${VENV_PATH}
+
+### Update target + cache_dir in pip.conf ###
+cat << EOL > "\${VENV_PATH}/pip.conf"
+[global]
+target = \${VENV_PATH}/lib/$python_version_dir/site-packages
+no-cache-dir = true
+cache-dir = \${VENV_PATH}/lib/pip-cache
+
+[install]
+ignore-installed = true
+EOL
+
+### Install requirements.txt ###
+echo "Entering virtual env"
+source \${VENV_PATH}/bin/activate
+echo "Installing requirements"
+python -m pip install -r \${BUILD_DIR}/requirements.txt
+echo "Finished installing requirements"
+deactivate
+EOF
+
+chmod +x "$project_folder/bin/build.sh"
+
+# Create a run.sh file inside /bin folder
+cat << EOF > "$project_folder/bin/run_$project_name.sh"
 #!/bin/bash
 
 # Set tool directory environment variable

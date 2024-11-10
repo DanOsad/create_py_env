@@ -2,10 +2,11 @@
 
 # Function to display usage information
 usage() {
-    echo "Usage: $0 [-py] [-git] <project_name>"
+    echo "Usage: $0 [-py] [-git] [-ex] <project_name|project_dir (if using -ex)>"
     echo "Options:"
     echo "  -py    Create a Python virtual environment and a main.py file"
     echo "  -git   Initialize a Git repository"
+    echo "  -ex    Create a Python virtual environment in an existing project; Can be empty for current dir"
     exit 1
 }
 
@@ -51,16 +52,20 @@ if [ $# -eq 0 ]; then
 fi
 
 # Parse options
+in_existing=0        # Flag to indicate whether to create Python virtual environment in an existing project directory
 create_python_env=0  # Flag to indicate whether to create Python virtual environment
 init_git_repo=0      # Flag to indicate whether to initialize a Git repository
 
-while getopts ":pygit" opt; do
+while getopts ":pygitex" opt; do
     case ${opt} in
         p)
             create_python_env=1
             ;;
         g)
             init_git_repo=1
+            ;;
+        e)
+            in_existing=1
             ;;
         \?)
             echo "Invalid option: -$OPTARG" 1>&2
@@ -108,7 +113,12 @@ if [ $create_python_env -eq 1 ]; then
     select_python_version
 
     # Create a Python virtual environment using the selected Python version
-    "$selected_python_version/bin/python3" -m venv "$project_folder/.venv"
+    #TODO: add virtualenv to existing project dir
+    if [ $in_existing -eq 1 ]; then
+        "$selected_python_version/bin/python3" -m venv "$PWD/.venv"
+    else
+        "$selected_python_version/bin/python3" -m venv "$project_folder/.venv"
+    fi
 
     # Get the Python version directory dynamically
     python_version_dir=$(ls -d "$project_folder/.venv/lib/python"* | head -n 1 | xargs -n 1 basename)
