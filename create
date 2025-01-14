@@ -264,9 +264,6 @@ export PYTHONPATH="\${${project_name^^}_DIR}/.venv/lib/$python_version_dir/site-
 # Update PATH
 export PATH="\${${project_name^^}_DIR}/.venv/lib/$python_version_dir/site-packages:\$PATH"
 
-# Update the shebang of main.py
-sed -i "1s@.*@#!\${${project_name^^}_DIR}/.venv/bin/python@" "\${${project_name^^}_DIR}/main.py"
-
 # Run main.py from project folder
 \${${project_name^^}_DIR}/main.py "\$@"
 
