@@ -4,8 +4,9 @@
 usage() {
     echo "Usage: $0 [-py] [-git] <project_name>"
     echo "Options:"
-    echo "  -py    Create a Python virtual environment and a main.py file"
-    echo "  -git   Initialize a Git repository"
+    echo "  -p    Create a Python virtual environment and a main.py file"
+    echo "  -v    Choose a unique name for your env (default: .venv)"
+    echo "  -g    Initialize a Git repository"
     exit 1
 }
 
@@ -54,13 +55,16 @@ fi
 create_python_env=0  # Flag to indicate whether to create Python virtual environment
 init_git_repo=0      # Flag to indicate whether to initialize a Git repository
 
-while getopts ":pygit" opt; do
+while getopts ":pgv:" opt; do
     case ${opt} in
         p)
             create_python_env=1
             ;;
         g)
             init_git_repo=1
+            ;;
+        v)
+            unique_venv_name=$OPTARG
             ;;
         \?)
             echo "Invalid option: -$OPTARG" 1>&2
@@ -100,6 +104,13 @@ EOF
 # If flag is set to create Python virtual environment
 if [ $create_python_env -eq 1 ]; then
 
+    # Check for unique name
+    if [[ -n "$unique_venv_name" ]]; then
+        VENV_NAME="$unique_venv_name"
+    else
+        VENV_NAME=".venv"
+    fi
+
     # Create requirements.txt
     touch $project_folder/requirements.txt
 
@@ -107,13 +118,13 @@ if [ $create_python_env -eq 1 ]; then
     select_python_version
 
     # Create a Python virtual environment using the selected Python version
-    "$selected_python_version/bin/python3" -m venv "$project_folder/.venv"
+    "$selected_python_version/bin/python" -m venv "$project_folder/$VENV_NAME"
 
     # Get the Python version directory dynamically
-    python_version_dir=$(ls -d "$project_folder/.venv/lib/python"* | head -n 1 | xargs -n 1 basename)
+    python_version_dir=$(ls -d "$project_folder/$VENV_NAME/lib/python"* | head -n 1 | xargs -n 1 basename)
 
     # Declare VARS
-    VENV_DIR="$project_folder/.venv"
+    VENV_DIR="$project_folder/$VENV_NAME"
     VENV_BIN="$VENV_DIR/bin"
     VENV_LIB="$VENV_DIR/lib"
     VENV_PKG="$VENV_LIB/$python_version_dir/site-packages"
@@ -136,7 +147,7 @@ if [ $create_python_env -eq 1 ]; then
 
     # Create a main.py file with shebang pointing to Python in the virtual environment
     cat << EOF > "$project_folder/main.py"
-#!$project_folder/.venv/bin/python
+#!$project_folder/$VENV_NAME/bin/python
 
 # Your Python code starts here
 import os
@@ -144,8 +155,8 @@ import os
 if __name__ == "__main__":
     print(f"Hello, {os.environ['USER']}!")
 EOF
-    # Create a pip.conf file in the .venv directory
-    cat << EOF > "$project_folder/.venv/pip.conf"
+    # Create a pip.conf file in the venv directory
+    cat << EOF > "$project_folder/$VENV_NAME/pip.conf"
 [global]
 target = $VENV_PKG
 no-cache-dir = true
@@ -166,50 +177,78 @@ cat << EOF > "$project_folder/bin/add_package.sh"
 #!/bin/bash
 
 # Parse flags
-while getopts "p:v:h" opt; do
+while getopts "p:v:r:h" opt; do
   case \$opt in
     p) package_name="\$OPTARG" ;;
     v) package_version="\$OPTARG" ;;
-    h) echo "Usage: \$0 [-p package_name] [-v version]" >&2; exit 1 ;;
-    *) echo "Usage: \$0 [-p package_name] [-v version]" >&2; exit 1 ;;
+    r) requirements_file="\$OPTARG" ;;
+    h) show_help; exit 0 ;;
+    *) show_help; exit 1 ;;
   esac
 done
 
-# Validate flags
-if [[ -z "\$package_name" ]]; then
-    echo "ERROR: -p <package_name> required"
-    exit 1
+show_help() {
+  echo "Usage: \$0 [-p package_name] [-v version] [-r requirements_file]"
+  echo "Options:"
+  echo "  -p <package_name>    Package to install (required unless -r is used)"
+  echo "  -v <version>         Specific version of the package"
+  echo "  -r <requirements>    Install from requirements.txt file"
+  echo "  -h                   Show this help message"
+}
+
+# Validate input
+if [[ -z "\$package_name" && -z "\$requirements_file" ]]; then
+  echo "ERROR: Either -p <package_name> or -r <requirements_file> must be specified"
+  show_help
+  exit 1
 fi
 
-# Version logic
-if [[ -n "\$package_version" ]]; then
-    package_to_install="\$package_name==\$package_version"
-else
-    package_to_install="\$package_name"
+if [[ -n "\$requirements_file" && ! -f "\$requirements_file" ]]; then
+  echo "ERROR: Requirements file not found: \$requirements_file"
+  exit 1
 fi
 
-echo "Installing package => \$package_to_install"
-
-# source activate
+# Activate virtual environment
 VENV_DIR=\$(realpath "\$(dirname "\$0")/..")/.venv
 ACTIVATE_DIR="\$VENV_DIR/bin/activate"
+
+if [[ ! -f "\$ACTIVATE_DIR" ]]; then
+  echo "ERROR: Virtual environment not found at \$VENV_DIR"
+  exit 1
+fi
+
 source "\$ACTIVATE_DIR"
 
-# verify python + pip are local to venv
-echo "Python path:"
-which python
-echo "Pip path:"
-which pip
+# Verify python and pip are local to venv
+python_path=\$(which python)
+pip_path=\$(which pip)
+echo "Python path: \$python_path"
+echo "Pip path: \$pip_path"
 
-# pip install <package>
-python -m pip install "\$package_to_install"
+# Installation logic
+if [[ -n "\$requirements_file" ]]; then
+  echo "Installing packages from: \$requirements_file"
+  python -m pip install -r "\$requirements_file"
+else
+  # Version logic
+  if [[ -n "\$package_version" ]]; then
+    package_to_install="\$package_name==\$package_version"
+  else
+    package_to_install="\$package_name"
+  fi
 
-# update requirements.txt
-python -m pip freeze > "\${VENV_DIR%/.venv}/requirements.txt"
+  echo "Installing package => \$package_to_install"
+  python -m pip install "\$package_to_install"
+fi
 
-echo "Finished installing \$package_to_install"
+# Update requirements.txt
+project_dir="\${VENV_DIR%/.venv}"
+requirements_path="\$project_dir/requirements_current.txt"
+python -m pip freeze > "\$requirements_path"
+echo "Updated requirements file at: \$requirements_path"
 
 deactivate
+echo "Installation complete"
 EOF
 
 # Set execute permissions for add_package.sh
@@ -222,7 +261,7 @@ cat << EOF > "$project_folder/bin/build.sh"
 ### Create python virtual environment ###
 BUILD_DIR=\$(realpath "\$(dirname "\$0")/..")
 PY_VER_PATH="${selected_python_version}/bin"
-VENV_PATH="\${BUILD_DIR}/.venv"
+VENV_PATH="\${BUILD_DIR}/$VENV_NAME"
 echo "Installing python env to \$VENV_PATH"
 \${PY_VER_PATH}/python -m venv \${VENV_PATH}
 
@@ -256,13 +295,13 @@ cat << EOF > "$project_folder/bin/run_$project_name.sh"
 export ${project_name^^}_DIR=\$(realpath "\$(dirname "\$0")/..")
 
 # Activate the virtual environment
-source "\${${project_name^^}_DIR}/.venv/bin/activate"
+source "\${${project_name^^}_DIR}/$VENV_NAME/bin/activate"
 
 # Set python module directory
-export PYTHONPATH="\${${project_name^^}_DIR}/.venv/lib/$python_version_dir/site-packages"
+export PYTHONPATH="\${${project_name^^}_DIR}/$VENV_NAME/lib/$python_version_dir/site-packages"
 
 # Update PATH
-export PATH="\${${project_name^^}_DIR}/.venv/lib/$python_version_dir/site-packages:\$PATH"
+export PATH="\${${project_name^^}_DIR}/$VENV_NAME/lib/$python_version_dir/site-packages:\$PATH"
 
 # Run main.py from project folder
 \${${project_name^^}_DIR}/main.py "\$@"
@@ -279,13 +318,14 @@ fi
 if [ $init_git_repo -eq 1 ]; then
     # Initialize Git repository
     cd "$project_folder" || exit
-    git init -b main
+    git init
+    git checkout -b main
     touch .gitignore
 
 cat << EOF > "$project_folder/.gitignore"
 # DIRS
 /__pycache__
-/.venv
+/$VENV_NAME
 
 # FILES
 *.pyc
