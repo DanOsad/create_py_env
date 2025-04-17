@@ -1,5 +1,7 @@
 #!/bin/bash
 
+_VERSION_="1.2"
+
 # Function to display usage information
 usage() {
     echo "Usage: $0 [-py] [-git] <project_name>"
